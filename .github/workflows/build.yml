@@ -3,6 +3,7 @@ name: Build Runner Image
 # 构建并发布 ARC 弹性 pod 的自定义 runner 镜像到 ghcr.io/atoz-project/arc-runner-rust。
 # 触发:改 Dockerfile 的 push、手动 dispatch。rust 工具链版本钉在 Dockerfile 里,
 # 升级 = 改版本 + push,本工作流自动重建。
+# tag 策略:<rust 版本>(如 1.98.1,values.yaml 引用它) + latest + sha-<commit>(回滚后路)。
 on:
   workflow_dispatch:
   push:
@@ -30,6 +31,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+
+      # tag 用的 rust 版本直接从 Dockerfile 提取,单一真相源,改版本不用碰本文件
+      - id: ver
+        run: echo "rust=$(grep -oP '(?<=--default-toolchain )[0-9.]+' Dockerfile)" >> "$GITHUB_OUTPUT"
       - id: meta
         uses: docker/metadata-action@v5
         with:
@@ -37,7 +42,7 @@ jobs:
           tags: |
             type=raw,value=latest
             type=sha
-
+            type=raw,value=${{ steps.ver.outputs.rust }}
       # 单架构:ARC 节点为 amd64;将来有 arm64 节点再加 linux/arm64
       - uses: docker/build-push-action@v6
         with:

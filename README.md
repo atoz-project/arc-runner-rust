@@ -17,30 +17,42 @@ jobs:
     runs-on: arc-runner-set-rust   # Rust toolchain preinstalled, no setup steps
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1   # optional, see below
-        with:
-          toolchain: ""           # empty: use the image's pinned Rust
-      - run: cargo test --locked
+      - uses: Swatinem/rust-cache@v2   # cargo registry + target cache
+      - run: cargo test --locked       # no toolchain setup at all
 ```
+
+Pin the toolchain in your repo to match the image, so the preinstalled
+toolchain is a rustup no-op on the pod:
+
+```toml
+# rust-toolchain.toml
+[toolchain]
+channel = "1.98.1"
+```
+
+The same file also pins GitHub-hosted runners and local checkouts, so clippy
+gates behave identically in all three environments. See
+[docs/adr/0001-explicit-toolchain-pinning.md](docs/adr/0001-explicit-toolchain-pinning.md).
 
 What you can drop compared to the default runner image:
 
 - `apt-get install build-essential` / musl packages — baked in
-- `dtolnay/rust-toolchain` or `setup-rust-toolchain` with a version — the image
-  pins Rust (see table below); only keep the action if you need a *different*
-  version or extra components
+- `dtolnay/rust-toolchain` / `setup-rust-toolchain` — a versioned setup action
+  on an ephemeral pod just re-downloads the toolchain. Only use one if you
+  need a *different* version than the image pin, or extra components
 
-Keep `actions-rust-lang/setup-rust-toolchain` (or `Swatinem/rust-cache`) if you
-want the shared cargo registry/target cache — the action manages that cache
-even with an empty `toolchain:`.
+`Swatinem/rust-cache` is the standard cache; don't combine it with
+`setup-rust-toolchain`'s built-in cache (double caching). `python3`, `unzip`,
+`git`, `curl`, `jq`, `sudo` are inherited from the base image — don't
+apt-install them either.
 
 ## What's inside
 
 | Component | Version / source | Notes |
 |---|---|---|
 | GitHub Actions Runner | pinned base `ghcr.io/actions/actions-runner` | inherits git, curl, jq, sudo |
-| Rust | 1.98.1 via rustup (minimal profile) | `clippy`, `rustfmt`, `rust-src`, `x86_64-unknown-linux-musl` target |
-| Build tools | `build-essential`, `musl-tools`, `pkg-config` | via apt |
+| Rust | 1.98.1 via rustup (minimal profile) | `clippy`, `rustfmt`, `x86_64-unknown-linux-musl` target |
+| Build tools | `build-essential`, `musl-tools`, `file` | via apt; `binutils` (`readelf`/`strings`) ships with gcc |
 
 `cargo` / `rustc` are on `PATH` for the `runner` user (`~/.cargo/bin`).
 
@@ -61,15 +73,28 @@ helm upgrade --install arc-runner-set-rust \
   --version 0.13.0 -n arc-runners -f deploy/values.yaml
 ```
 
-To roll out a new image build, bump the tag in
-[deploy/values.yaml](deploy/values.yaml) (or keep `latest` and restart the
-listener pods) — pending jobs drain to the old pods automatically.
+To roll out a new image build, bump the version tag in
+[deploy/values.yaml](deploy/values.yaml) and re-run the helm command above —
+pending jobs drain to the old pods automatically.
 
 ## Building
 
 [.github/workflows/build.yml](.github/workflows/build.yml) builds and pushes
 on every `main` push touching the Dockerfile and on manual dispatch. Tags:
-`latest` + `sha-<commit>`.
+`latest`, `sha-<commit>`, and the pinned Rust version (e.g. `1.98.1`,
+extracted from the Dockerfile — single source of truth). The scale set pins
+the version tag; `latest` is never referenced by the deployment.
+
+## Upgrading Rust
+
+Explicit four-step sequence (see the ADR for why):
+
+1. Bump `--default-toolchain` in the [Dockerfile](Dockerfile) → merge; the
+   build workflow pushes a new `<version>` tag
+2. Bump the tag in [deploy/values.yaml](deploy/values.yaml) → `helm upgrade`
+3. Bump `rust-toolchain.toml` in each consumer repo
+4. Until a consumer bumps, its pods download the old toolchain on demand —
+   slower, never broken
 
 ## License
 
