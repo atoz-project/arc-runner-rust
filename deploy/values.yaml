@@ -1,0 +1,10 @@
+githubConfigUrl: https://github.com/atoz-project
+githubConfigSecret: github-config-secret
+runnerGroup: arc-public
+minRunners: 1
+template:
+  spec:
+    containers:
+      - name: runner
+        image: ghcr.io/atoz-project/arc-runner-rust:latest
+        command: ["/home/runner/run.sh"]
