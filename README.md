@@ -52,7 +52,7 @@ apt-install them either.
 |---|---|---|
 | GitHub Actions Runner | pinned base `ghcr.io/actions/actions-runner` | inherits git, curl, jq, sudo |
 | Rust | 1.98.1 via rustup (minimal profile) | `clippy`, `rustfmt`, `x86_64-unknown-linux-musl` target |
-| Build tools | `build-essential`, `musl-tools`, `file` | via apt; `binutils` (`readelf`/`strings`) ships with gcc |
+| Build tools | `build-essential`, `musl-tools` | via apt; `binutils` (`readelf`/`strings`) ships with gcc |
 
 `cargo` / `rustc` are on `PATH` for the `runner` user (`~/.cargo/bin`).
 

@@ -9,10 +9,10 @@ USER root
 
 # build-essential:cc 链接器(cargo 必需,极简镜像没有——曾致 proc-macro2 构建失败)
 # musl-tools:setup-coder build 矩阵 linux-x64 静态 musl 目标备用(将来迁上 ARC 零新增)
-# file:trustlink-cli scripts/verify-linux-release-artifact.sh 校验 musl 静态产物
-#  (脚本另需 readelf/strings,由 binutils 提供——binutils 随 gcc 依赖已装,无需显式列)
+# (readelf/strings 由 binutils 提供,随 gcc 依赖已装;file 曾预装后移除——
+#  trustlink-cli verify 脚本已改用 readelf 做 ELF 检查,单仓命中不收录,见 issue #1)
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential musl-tools file \
+ && apt-get install -y --no-install-recommends build-essential musl-tools \
  && rm -rf /var/lib/apt/lists/*
 
 # rustup 装到共享位置(沿用官方 rust 镜像的 RUSTUP_HOME/CARGO_HOME 约定),
