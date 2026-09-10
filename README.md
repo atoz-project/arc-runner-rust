@@ -70,7 +70,7 @@ The live scale set was installed with:
 ```bash
 helm upgrade --install arc-runner-set-rust \
   oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
-  --version 0.13.0 -n arc-runners -f deploy/values.yaml
+  --version 0.14.2 -n arc-runners -f deploy/values.yaml
 ```
 
 To roll out a new image build, bump the version tag in
