@@ -6,6 +6,7 @@ template:
   spec:
     containers:
       - name: runner
-        # tag = 镜像内钉的 rust 版本;升级 = 改这里的 tag + helm upgrade(见 README 升版协议)
-        image: ghcr.io/atoz-project/arc-runner-rust:1.98.1
+        # 常规钉 rust 版本 tag;本次 rust 版本未变、只加 mingw/gnu target——用 sha tag
+        # 强吃新镜像,绕开 IfNotPresent 下节点缓存旧 1.98.1(下次 rust 升版改回版本 tag)
+        image: ghcr.io/atoz-project/arc-runner-rust:sha-e1b89c8
         command: ["/home/runner/run.sh"]
