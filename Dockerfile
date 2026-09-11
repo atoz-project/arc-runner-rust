@@ -9,10 +9,12 @@ USER root
 
 # build-essential:cc 链接器(cargo 必需,极简镜像没有——曾致 proc-macro2 构建失败)
 # musl-tools:setup-coder build 矩阵 linux-x64 静态 musl 目标备用(将来迁上 ARC 零新增)
+# gcc-mingw-w64-x86-64:setup-coder win-x64 已迁 ARC,x86_64-pc-windows-gnu 交叉编译
+# 的链接器驱动(纯 Rust crate,mingw gcc 只当 linker 不编译 C)
 # (readelf/strings 由 binutils 提供,随 gcc 依赖已装;file 曾预装后移除——
 #  trustlink-cli verify 脚本已改用 readelf 做 ELF 检查,单仓命中不收录,见 issue #1)
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential musl-tools \
+ && apt-get install -y --no-install-recommends build-essential musl-tools gcc-mingw-w64-x86-64 \
  && rm -rf /var/lib/apt/lists/*
 
 # rustup 装到共享位置(沿用官方 rust 镜像的 RUSTUP_HOME/CARGO_HOME 约定),
@@ -26,7 +28,7 @@ RUN curl -sSf https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/
  && chmod +x /tmp/rustup-init \
  && /tmp/rustup-init -y --no-modify-path --profile minimal \
       --default-toolchain 1.98.1 --component clippy --component rustfmt \
- && rustup target add x86_64-unknown-linux-musl \
+ && rustup target add x86_64-unknown-linux-musl x86_64-pc-windows-gnu \
  && rm /tmp/rustup-init \
  && chmod -R a+w /usr/local/rustup /usr/local/cargo \
  && rustc --version && cargo --version && cargo clippy --version

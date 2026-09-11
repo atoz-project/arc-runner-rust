@@ -51,8 +51,8 @@ apt-install them either.
 | Component | Version / source | Notes |
 |---|---|---|
 | GitHub Actions Runner | pinned base `ghcr.io/actions/actions-runner` | inherits git, curl, jq, sudo |
-| Rust | 1.98.1 via rustup (minimal profile) | `clippy`, `rustfmt`, `x86_64-unknown-linux-musl` target |
-| Build tools | `build-essential`, `musl-tools` | via apt; `binutils` (`readelf`/`strings`) ships with gcc |
+| Rust | 1.98.1 via rustup (minimal profile) | `clippy`, `rustfmt`; targets `x86_64-unknown-linux-musl`, `x86_64-pc-windows-gnu` |
+| Build tools | `build-essential`, `musl-tools`, `gcc-mingw-w64-x86-64` | via apt; `binutils` (`readelf`/`strings`) ships with gcc; mingw gcc is the linker driver for win-gnu cross builds |
 
 `cargo` / `rustc` are on `PATH` for the `runner` user (`~/.cargo/bin`).
 
