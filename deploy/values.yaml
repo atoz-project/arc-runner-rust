@@ -1,12 +1,26 @@
+# Chart gha-runner-scale-set 0.14.2; minor must match controller 0.14.2.
 githubConfigUrl: https://github.com/atoz-project
 githubConfigSecret: github-config-secret
 runnerGroup: arc-public
 minRunners: 1
+namespaceOverride: ""
 template:
   spec:
+    securityContext:
+      fsGroup: 1001
     containers:
       - name: runner
-        # 常规钉 rust 版本 tag;本次 rust 版本未变、只加 mingw/gnu target——用 sha tag
-        # 强吃新镜像,绕开 IfNotPresent 下节点缓存旧 1.98.1(下次 rust 升版改回版本 tag)
-        image: ghcr.io/atoz-project/arc-runner-rust:sha-e1b89c8
+        image: ghcr.io/atoz-project/arc-runner-rust:v1.0.0
         command: ["/home/runner/run.sh"]
+        volumeMounts:
+          - name: cache
+            mountPath: /home/runner/.cache
+        resources:
+          requests: { cpu: "4", memory: 8Gi }
+          limits:   { cpu: "4", memory: 8Gi }
+    volumes:
+      # k8s-sg-dev has no StorageClass or CSIDriver; NAS export 071wrg7528z1wkkb61l (ap-southeast-1a) root is 1777 for uid 1001 writes.
+      - name: cache
+        nfs:
+          server: 071wrg7528z1wkkb61l-fbj64.ap-southeast-1.nas.aliyuncs.com
+          path: /

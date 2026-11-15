@@ -1,36 +1,65 @@
 # syntax=docker/dockerfile:1
 
-# ARC 弹性 pod 自定义 runner 镜像:官方极简镜像 + Rust 项目工具链预装。
-# 目标:CI 冷 pod 零安装(现状每次 apt build-essential ~25s + rustup 工具链下载 ~15s)。
-# 基底与线上 pod 一致(ubuntu noble 极简镜像,runner v2.337.0),只增不删。
 FROM ghcr.io/actions/actions-runner:2.337.0
+
+ARG RUST_VERSION=1.98.1
+ARG PROTOC_VERSION=27.5
+ARG PROTOC_SHA256=33abede6330dd22fb9af47c2d9804ead3d86c82e025b9eef361a9ac2e955ecce
 
 USER root
 
-# build-essential:cc 链接器(cargo 必需,极简镜像没有——曾致 proc-macro2 构建失败)
-# musl-tools:setup-coder build 矩阵 linux-x64 静态 musl 目标备用(将来迁上 ARC 零新增)
-# gcc-mingw-w64-x86-64:setup-coder win-x64 已迁 ARC,x86_64-pc-windows-gnu 交叉编译
-# 的链接器驱动(纯 Rust crate,mingw gcc 只当 linker 不编译 C)
-# (readelf/strings 由 binutils 提供,随 gcc 依赖已装;file 曾预装后移除——
-#  trustlink-cli verify 脚本已改用 readelf 做 ELF 检查,单仓命中不收录,见 issue #1)
+# `file` is intentionally omitted until more than one org repo needs it (see issue #1).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential musl-tools gcc-mingw-w64-x86-64 \
+ && apt-get install -y --no-install-recommends \
+      build-essential \
+      musl-tools \
+      gcc-mingw-w64-x86-64 \
+      binutils-mingw-w64-x86-64 \
  && rm -rf /var/lib/apt/lists/*
 
-# rustup 装到共享位置(沿用官方 rust 镜像的 RUSTUP_HOME/CARGO_HOME 约定),
-# a+w 让 runner 用户可写 cargo registry 缓存与 rustup 自更新
-ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:$PATH
+RUN curl -fsSL "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip" -o /tmp/protoc.zip \
+ && echo "${PROTOC_SHA256}  /tmp/protoc.zip" | sha256sum -c - \
+ && unzip -q /tmp/protoc.zip -d /usr/local bin/protoc 'include/*' \
+ && chmod 0755 /usr/local/bin/protoc \
+ && chmod -R a+rX /usr/local/include/google \
+ && rm /tmp/protoc.zip
 
-# 钉小版本:CI 的 clippy 门禁对工具链版本敏感,升级 = 改这里 + 重建镜像,可审计。
-RUN curl -sSf https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init -o /tmp/rustup-init \
+# Runner pods mount a shared NFS cache volume over /home/runner/.cache, shadowing image files there.
+# Keep rustup proxy binaries read-only in /usr/local/cargo/bin while directing runtime CARGO_HOME to /home/runner/.cache/cargo.
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/home/runner/.cache/cargo \
+    PATH=/home/runner/.cache/cargo/bin:/usr/local/cargo/bin:$PATH
+
+RUN curl -fsSL https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init -o /tmp/rustup-init \
  && chmod +x /tmp/rustup-init \
- && /tmp/rustup-init -y --no-modify-path --profile minimal \
-      --default-toolchain 1.98.1 --component clippy --component rustfmt \
- && rustup target add x86_64-unknown-linux-musl x86_64-pc-windows-gnu \
+ && CARGO_HOME=/usr/local/cargo /tmp/rustup-init -y --no-modify-path --profile minimal \
+      --default-toolchain "${RUST_VERSION}" \
+      --component clippy --component rustfmt \
+ && CARGO_HOME=/usr/local/cargo /usr/local/cargo/bin/rustup target add \
+      x86_64-unknown-linux-musl \
+      x86_64-pc-windows-gnu \
+      wasm32-unknown-unknown \
  && rm /tmp/rustup-init \
- && chmod -R a+w /usr/local/rustup /usr/local/cargo \
- && rustc --version && cargo --version && cargo clippy --version
+ && chmod -R a+w /usr/local/rustup \
+ && chmod -R a+rX,go-w /usr/local/cargo \
+ && mkdir -p /home/runner/.cache/cargo \
+ && chown -R runner:runner /home/runner/.cache
 
 USER runner
+
+RUN rustc --version \
+ && cargo --version \
+ && cargo clippy --version \
+ && cargo fmt --version \
+ && protoc --version \
+ && x86_64-w64-mingw32-gcc --version \
+ && x86_64-w64-mingw32-dlltool --version \
+ && musl-gcc --version \
+ && ! test -w /usr/local/cargo/bin \
+ && printf 'syntax = "proto3"; import "google/protobuf/timestamp.proto"; message Smoke { google.protobuf.Timestamp ts = 1; }\n' > /tmp/smoke.proto \
+ && protoc -I/tmp -I/usr/local/include --descriptor_set_out=/tmp/smoke.desc /tmp/smoke.proto \
+ && printf 'pub extern "C" fn smoke() -> u32 { 1 }\n' | rustc --target wasm32-unknown-unknown --crate-type cdylib - -o /tmp/smoke.wasm \
+ && printf '#[link(name = "kernel32", kind = "raw-dylib")] extern "system" { fn GetCurrentProcessId() -> u32; } fn main() { unsafe { let _ = GetCurrentProcessId(); } }\n' > /tmp/win_smoke.rs \
+ && rustc --target x86_64-pc-windows-gnu /tmp/win_smoke.rs -o /tmp/win_smoke.exe \
+ && printf 'fn main() {}\n' | rustc --target x86_64-unknown-linux-musl - -o /tmp/musl_smoke \
+ && rm -f /tmp/smoke.proto /tmp/smoke.desc /tmp/smoke.wasm /tmp/win_smoke.rs /tmp/win_smoke.exe /tmp/musl_smoke
