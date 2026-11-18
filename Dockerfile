@@ -8,7 +8,6 @@ ARG PROTOC_SHA256=33abede6330dd22fb9af47c2d9804ead3d86c82e025b9eef361a9ac2e955ec
 
 USER root
 
-# `file` is intentionally omitted until more than one org repo needs it (see issue #1).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       build-essential \
